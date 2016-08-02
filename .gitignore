@@ -1,0 +1,9 @@
+# PyCharm
+.idea
+
+# sqlite
+*.sql
+
+# python byproducts
+*.pyc
+*.pyo
