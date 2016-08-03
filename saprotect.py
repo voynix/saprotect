@@ -12,6 +12,9 @@ METADATA_TABLE_NAME = 'metadata'
 
 CHUNK_SIZE = 4096
 
+VERSION = '0.1.0'
+HASH = 'SHA-1'
+
 class DB_Manager(object):
     def __init__(self):
         self.conn = None
@@ -45,6 +48,7 @@ class DB_Manager(object):
         self.curs.execute(command)
         self.curs.execute('''CREATE TABLE IF NOT EXISTS {}
                         (version TEXT, hash TEXT)'''.format(SAPROTECT_TABLE_NAME))
+        self.curs.execute('INSERT INTO {} VALUES (?, ?)'.format(SAPROTECT_TABLE_NAME), (VERSION, HASH))
         self.curs.execute('''CREATE TABLE IF NOT EXISTS {}
                         (start TEXT, end TEXT, files_scanned INTEGER)'''.format(METADATA_TABLE_NAME))
         self.conn.commit()
@@ -56,7 +60,8 @@ class DB_Manager(object):
         count = self.curs.fetchone()[0]
         if count == 0:
             self.curs.execute('''INSERT INTO {}(filename, path, hash, time)
-                                 VALUES (?, ?, ?, ?)'''.format(DATA_TABLE_NAME), (filename, path, hash, time()))
+                                 VALUES (?, ?, ?, ?)'''.format(DATA_TABLE_NAME),
+                              (filename, path, hash, time()))
         else:
             self.curs.execute('''UPDATE {} SET old_hash = hash, old_time = time
                                  WHERE filename = ? AND path = ?'''.format(DATA_TABLE_NAME), (filename, path))
@@ -71,7 +76,7 @@ class DB_Manager(object):
         errors = 0
         if not clean:
             print 'MISMATCHES'
-            print '-' * 40
+            print_sep()
         for row in self.curs:
             errors += 1
             if show_hashes:
@@ -79,11 +84,34 @@ class DB_Manager(object):
             else:
                 print row[1]
         if not clean:
-            print '-' * 40
+            print_sep()
             if errors == 1:
                 print '1 mismatch found'
             else:
                 print '{:d} mismatches found'.format(errors)
+        return errors
+
+
+    def get_statistics(self, clean=False):
+        self.curs.execute('SELECT COUNT(*) FROM {} WHERE old_hash IS NULL'.format(DATA_TABLE_NAME))
+        added = self.curs.fetchone()[0]
+        self.curs.execute('SELECT COUNT(*) FROM {} WHERE NOT old_hash IS NULL'.format(DATA_TABLE_NAME))
+        updated = self.curs.fetchone()[0]
+        self.curs.execute('SELECT COUNT(*) FROM {} WHERE NOT hash = old_hash'.format(DATA_TABLE_NAME))
+        mismatched = self.curs.fetchone()[0]
+        if not clean:
+            print 'STATISTICS'
+            print_sep()
+        print '{:d} files added'.format(added)
+        print '{:d} files updated'.format(updated)
+        print '{:d} files with hash mismatches'.format(mismatched)
+        if not clean:
+            print_sep()
+            print '{:d} files total'.format(added + updated)
+
+    def get_version(self):
+        self.curs.execute('SELECT * FROM {}'.format(SAPROTECT_TABLE_NAME))
+        print 'saprotect version {} using {}'.format(*self.curs.fetchone())
 
 
     def dump_database(self):
@@ -112,6 +140,11 @@ def protect_directory(directory, db):
             files_scanned += 1
     return files_scanned
 
+
+def print_sep():
+    print '-' * 40
+
+
 if __name__ == '__main__':
     if len(argv) < 2:
         print 'USAGE: {} PATH/TO/PROTECT/'.format(argv[0])
@@ -122,3 +155,5 @@ if __name__ == '__main__':
         print str(protect_directory(directory, dbm)), 'files scanned'
         dbm.dump_database()
         dbm.check_files()
+        dbm.get_statistics()
+        dbm.get_version()
