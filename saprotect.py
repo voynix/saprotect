@@ -17,7 +17,7 @@ STATUS_NEW = 4
 
 CHUNK_SIZE = 4096
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 HASH = 'SHA-1'
 
 class DB_Manager(object):
@@ -133,6 +133,17 @@ class DB_Manager(object):
                     print '{} has no mismatch; skipping'.format(path)
 
 
+    def show_duplicates(self, filename, clean=False):
+        self.curs.execute('''SELECT path, hash FROM {} where filename = ?'''.format(DATA_TABLE_NAME), (filename,))
+        if not clean:
+            print filename
+            print_sep()
+        for row in self.curs:
+            print row[0], row[1]
+        if not clean:
+            print_sep()
+
+
     def add_record(self, start_time, end_time, scanned):
         self.curs.execute('SELECT COUNT(*) FROM {} WHERE status = {:d} AND time > {:f}'.format(DATA_TABLE_NAME,
                                                                                                STATUS_NEW, start_time))
@@ -207,6 +218,8 @@ if __name__ == '__main__':
                         help='resolve hash mismatches on the TARGETs in favor of the old hash')
     group.add_argument('-R', '--remediate-new', metavar='TARGET', nargs='+',
                         help='resolve hash mismatches on the TARGETs in favor of the new hash')
+    group.add_argument('-d', '--show_duplicates', metavar='FILE',
+                       help='show hashes for all files with name FILE in the database')
     group.add_argument('-m', '--list-mismatches', action='store_true', help='show files with mismatched hashes')
     arguments = parser.parse_args()
 
@@ -240,5 +253,7 @@ if __name__ == '__main__':
                     dbm.remediate(target, STATUS_REMEDIATE_NEW)
         elif arguments.list_mismatches:
             dbm.get_mismatches(True)
+        elif arguments.show_duplicates is not None:
+            dbm.show_duplicates(arguments.show_duplicates)
         else:
             dbm.get_info()
