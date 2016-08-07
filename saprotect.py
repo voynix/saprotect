@@ -58,23 +58,23 @@ class DB_Manager(object):
 
 
     def upsert_file(self, filename, path, hash):
-        command = 'SELECT * FROM {} WHERE path = ?'.format(DATA_TABLE_NAME)
+        command = u'SELECT * FROM {} WHERE path = ?'.format(DATA_TABLE_NAME)
         self.curs.execute(command, (path,))
         row = self.curs.fetchone()
         if row is None:
-            self.curs.execute('''INSERT INTO {}(filename, path, hash, time, status)
+            self.curs.execute(u'''INSERT INTO {}(filename, path, hash, time, status)
                                  VALUES (?, ?, ?, ?, ?)'''.format(DATA_TABLE_NAME),
                               (filename, path, hash, time(), STATUS_NEW))
         elif row[6] != STATUS_MISMATCH:  # note: only update if status is not mismatch
             if row[6] == STATUS_REMEDIATE_OLD:
                 old_hash = row[3]
                 status = STATUS_OK if old_hash == hash else STATUS_MISMATCH
-                self.curs.execute('''UPDATE {} SET hash = ?, time = ?, status = ?
+                self.curs.execute(u'''UPDATE {} SET hash = ?, time = ?, status = ?
                                      WHERE path = ?'''.format(DATA_TABLE_NAME), (hash, time, status, path))
             else:
                 old_hash = row[2]
                 status = STATUS_OK if old_hash == hash else STATUS_MISMATCH
-                self.curs.execute('''UPDATE {} SET hash = ?, time = ?, old_hash = hash, old_time = time, status = ?
+                self.curs.execute(u'''UPDATE {} SET hash = ?, time = ?, old_hash = hash, old_time = time, status = ?
                                      WHERE path = ?'''.format(DATA_TABLE_NAME), (hash, time(), status, path))
         self.conn.commit()
 
@@ -88,7 +88,7 @@ class DB_Manager(object):
         for row in self.curs:
             errors += 1
             if show_hashes:
-                print '{} ({} != {})'.format(row[1], row[2], row[3])
+                print u'{} ({} != {})'.format(row[1], row[2], row[3])
             else:
                 print row[1]
         if not clean:
@@ -116,25 +116,25 @@ class DB_Manager(object):
                 for root, dirlist, filelist in walk(path, followlinks=True):
                     for f in filelist:
                         path = join(root, f)
-                        self.curs.execute('''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
+                        self.curs.execute(u'''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
                         if self.curs.fetchone()[0] == STATUS_MISMATCH:
-                            self.curs.execute('''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
+                            self.curs.execute(u'''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
                                               (status, path))
                             self.conn.commit()
                         else:
-                            print '{} has no mismatch; skipping'.format(path)
+                            print u'{} has no mismatch; skipping'.format(path)
             else:
-                self.curs.execute('''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
+                self.curs.execute(u'''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
                 if self.curs.fetchone()[0] == STATUS_MISMATCH:
-                    self.curs.execute('''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
+                    self.curs.execute(u'''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
                                       (status, path))
                     self.conn.commit()
                 else:
-                    print '{} has no mismatch; skipping'.format(path)
+                    print u'{} has no mismatch; skipping'.format(path)
 
 
     def show_duplicates(self, filename, clean=False):
-        self.curs.execute('''SELECT path, hash FROM {} where filename = ?'''.format(DATA_TABLE_NAME), (filename,))
+        self.curs.execute(u'''SELECT path, hash FROM {} where filename = ?'''.format(DATA_TABLE_NAME), (filename,))
         if not clean:
             print filename
             print_sep()
@@ -174,7 +174,7 @@ def protect_directory(directory, db):
     for root, dirlist, filelist in walk(directory, followlinks=True):  # follow symlinks
         for f in filelist:
             path = join(root, f)
-            print 'hashing {}'.format(path)
+            print u'hashing {}'.format(path)
             with open(path, 'r') as source:
                 s = sha1()
                 chunk = source.read(CHUNK_SIZE)
@@ -182,7 +182,7 @@ def protect_directory(directory, db):
                     s.update(chunk)
                     chunk = source.read(CHUNK_SIZE)
                 digest = s.hexdigest()
-                print 'storing {}'.format(path)
+                print u'storing {}'.format(path)
                 db.upsert_file(f, path, digest)
             files_scanned += 1
     return files_scanned
@@ -190,7 +190,7 @@ def protect_directory(directory, db):
 
 def protect_file(path, db):
     f = basename(path)
-    print 'hashing {}'. format(path)
+    print u'hashing {}'. format(path)
     with open(path, 'r') as source:
         s = sha1()
         chunk = source.read(CHUNK_SIZE)
@@ -198,7 +198,7 @@ def protect_file(path, db):
             s.update(chunk)
             chunk = source.read(CHUNK_SIZE)
         digest = s.hexdigest()
-        print 'storing {}'.format(path)
+        print u'storing {}'.format(path)
         db.upsert_file(f, path, digest)
 
 
@@ -232,7 +232,7 @@ if __name__ == '__main__':
             files_scanned = 0
             start_time = time()
             for target in arguments.protect:
-                target = abspath(target)
+                target = abspath(unicode(target))
                 if exists(target):
                     if isdir(target):
                         files_scanned += protect_directory(target, dbm)
@@ -243,17 +243,17 @@ if __name__ == '__main__':
             dbm.add_record(start_time, end_time, files_scanned)
         elif arguments.remediate_old is not None:
             for target in arguments.remediate_old:
-                target = abspath(target)
+                target = abspath(unicode(target))
                 if exists(target):
                     dbm.remediate(target, STATUS_REMEDIATE_OLD)
         elif arguments.remediate_new is not None:
             for target in arguments.remediate_new:
-                target = abspath(target)
+                target = abspath(unicode(target))
                 if exists(target):
                     dbm.remediate(target, STATUS_REMEDIATE_NEW)
         elif arguments.list_mismatches:
             dbm.get_mismatches(True)
         elif arguments.show_duplicates is not None:
-            dbm.show_duplicates(arguments.show_duplicates)
+            dbm.show_duplicates(unicode(arguments.show_duplicates))
         else:
             dbm.get_info()
