@@ -17,7 +17,7 @@ STATUS_NEW = 4
 
 CHUNK_SIZE = 4096
 
-VERSION = '1.1.0'
+VERSION = '1.3.0'
 HASH = 'SHA-1'
 
 class DB_Manager(object):
