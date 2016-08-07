@@ -79,6 +79,31 @@ class DB_Manager(object):
         self.conn.commit()
 
 
+    def remediate(self, path, status):
+        if exists(path):
+            if isdir(path):
+                for root, dirlist, filelist in walk(path, followlinks=True):
+                    for f in filelist:
+                        path = join(root, f)
+                        self.curs.execute(u'''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
+                        row = self.curs.fetchone()
+                        if row is not None and row[0] == STATUS_MISMATCH:
+                            self.curs.execute(u'''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
+                                              (status, path))
+                            self.conn.commit()
+                        else:
+                            print u'{} has no mismatch; skipping'.format(path)
+            else:
+                self.curs.execute(u'''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
+                row = self.curs.fetchone()
+                if row is not None and row[0] == STATUS_MISMATCH:
+                    self.curs.execute(u'''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
+                                      (status, path))
+                    self.conn.commit()
+                else:
+                    print u'{} has no mismatch; skipping'.format(path)
+
+
     def get_mismatches(self, show_hashes=False, clean=False):
         self.curs.execute('SELECT * FROM {} WHERE status = {:d}'.format(DATA_TABLE_NAME, STATUS_MISMATCH))
         errors = 0
@@ -110,28 +135,6 @@ class DB_Manager(object):
             print_sep()
             print '{:d} total file{} scanned'.format(scanned, 's' if scanned != 1 else '')
 
-    def remediate(self, path, status):
-        if exists(path):
-            if isdir(path):
-                for root, dirlist, filelist in walk(path, followlinks=True):
-                    for f in filelist:
-                        path = join(root, f)
-                        self.curs.execute(u'''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
-                        if self.curs.fetchone()[0] == STATUS_MISMATCH:
-                            self.curs.execute(u'''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
-                                              (status, path))
-                            self.conn.commit()
-                        else:
-                            print u'{} has no mismatch; skipping'.format(path)
-            else:
-                self.curs.execute(u'''SELECT status FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
-                if self.curs.fetchone()[0] == STATUS_MISMATCH:
-                    self.curs.execute(u'''UPDATE {} SET status = ? WHERE path = ?'''.format(DATA_TABLE_NAME),
-                                      (status, path))
-                    self.conn.commit()
-                else:
-                    print u'{} has no mismatch; skipping'.format(path)
-
 
     def show_duplicates(self, filename, clean=False):
         self.curs.execute(u'''SELECT path, hash FROM {} where filename = ?'''.format(DATA_TABLE_NAME), (filename,))
@@ -142,6 +145,11 @@ class DB_Manager(object):
             print row[0], row[1]
         if not clean:
             print_sep()
+
+
+    def check_presence(self, path):
+        self.curs.execute(u'''SELECT * FROM {} WHERE path = ?'''.format(DATA_TABLE_NAME), (path,))
+        return self.curs.fetchone() is not None
 
 
     def add_record(self, start_time, end_time, scanned):
@@ -169,11 +177,15 @@ class DB_Manager(object):
             print row
 
 
-def protect_directory(directory, db):
+def protect_directory(directory, db, add_only=False):
     files_scanned = 0
     for root, dirlist, filelist in walk(directory, followlinks=True):  # follow symlinks
         for f in filelist:
+            files_scanned += 1
             path = join(root, f)
+            if add_only and db.check_presence(path):
+                print u'skipping {}'.format(path)
+                continue
             print u'hashing {}'.format(path)
             with open(path, 'r') as source:
                 s = sha1()
@@ -184,12 +196,14 @@ def protect_directory(directory, db):
                 digest = s.hexdigest()
                 print u'storing {}'.format(path)
                 db.upsert_file(f, path, digest)
-            files_scanned += 1
     return files_scanned
 
 
-def protect_file(path, db):
+def protect_file(path, db, add_only=False):
     f = basename(path)
+    if add_only and db.check_presence(path):
+        print u'skipping {}'.format(path)
+        return
     print u'hashing {}'. format(path)
     with open(path, 'r') as source:
         s = sha1()
@@ -211,6 +225,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Record file hashes and check on changes')
     parser.add_argument('-v', '--version', version='saprotect {} using {}'.format(VERSION, HASH), action='version',
                         help='show version information')
+    parser.add_argument('-a', '--add-only', action='store_true',
+                        help='when given with -p, only record files not already present in the database; '
+                             '\does nothing otherwise')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-p', '--protect', metavar='TARGET', nargs='+',
                         help='record the hashes of the TARGETs and print any mismatches found')
@@ -235,9 +252,9 @@ if __name__ == '__main__':
                 target = abspath(unicode(target))
                 if exists(target):
                     if isdir(target):
-                        files_scanned += protect_directory(target, dbm)
+                        files_scanned += protect_directory(target, dbm, arguments.add_only)
                     else:
-                        protect_file(target, dbm)
+                        protect_file(target, dbm, arguments.add_only)
                         files_scanned += 1
             end_time = time()
             dbm.add_record(start_time, end_time, files_scanned)
