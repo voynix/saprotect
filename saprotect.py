@@ -3,8 +3,10 @@ import sqlite3
 
 from hashlib import sha1
 from os import walk
-from os.path import abspath, basename, exists, isdir, join
+from os.path import abspath, basename, exists, expanduser, isdir, join
 from time import asctime, localtime, time
+
+DATABASE_FILE_PATH = expanduser('~/.prot.sql')
 
 DATA_TABLE_NAME = 'files'
 METADATA_TABLE_NAME = 'metadata'
@@ -17,7 +19,7 @@ STATUS_NEW = 4
 
 CHUNK_SIZE = 4096
 
-VERSION = '1.3.0'
+VERSION = '1.4.0'
 HASH = 'SHA-1'
 
 class DB_Manager(object):
@@ -36,8 +38,13 @@ class DB_Manager(object):
         self.disconnect_from_db()
 
 
-    def connect_to_db(self, db='prot.sql'):
-        self.conn = sqlite3.connect(db)
+    def connect_to_db(self, db=DATABASE_FILE_PATH):
+        try:
+            self.conn = sqlite3.connect(db)
+        except:
+            print u'Could not connect to database {}'.format(db)
+            print 'Exiting'
+            exit(1)
         self.curs = self.conn.cursor()
 
 
