@@ -19,7 +19,7 @@ STATUS_NEW = 4
 
 CHUNK_SIZE = 4096
 
-VERSION = '1.4.0'
+VERSION = '1.4.1'
 HASH = 'SHA-1'
 
 class DB_Manager(object):
@@ -242,7 +242,7 @@ if __name__ == '__main__':
                         help='resolve hash mismatches on the TARGETs in favor of the old hash')
     group.add_argument('-R', '--remediate-new', metavar='TARGET', nargs='+',
                         help='resolve hash mismatches on the TARGETs in favor of the new hash')
-    group.add_argument('-d', '--show_duplicates', metavar='FILE',
+    group.add_argument('-d', '--show-duplicates', metavar='FILE',
                        help='show hashes for all files with name FILE in the database')
     group.add_argument('-m', '--list-mismatches', action='store_true', help='show files with mismatched hashes')
     arguments = parser.parse_args()
